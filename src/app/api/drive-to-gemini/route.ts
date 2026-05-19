@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import ffmpeg from 'fluent-ffmpeg';
@@ -70,8 +71,7 @@ async function runBackgroundUpload(jobId: string, fileId: string, apiKey: string
 
     const mimeType = driveRes.headers.get('content-type') || "video/mp4";
 
-    const tmpDir = path.join(process.cwd(), '.tmp');
-    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir);
+    const tmpDir = os.tmpdir();
 
     const videoPath = path.join(tmpDir, `${jobId}.mp4`);
     const audioPath = path.join(tmpDir, `${jobId}.m4a`);
