@@ -87,23 +87,8 @@ export default function WorkspacePage() {
           throw new Error(errData.error || "Lỗi khi kết nối Google Drive.");
         }
 
-        const { jobId } = await startRes.json();
-        
-        let jobData;
-        while (true) {
-          const statusRes = await fetch('/api/drive-to-gemini', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'status', jobId })
-          });
-          jobData = await statusRes.json();
-          
-          if (jobData.status === 'error') throw new Error(jobData.error);
-          if (jobData.status === 'completed') break;
-          
-          // Wait 3 seconds before next poll
-          await new Promise(r => setTimeout(r, 3000));
-        }
+        const jobData = await startRes.json();
+        if (jobData.status === 'error') throw new Error(jobData.error || "Có lỗi xảy ra khi xử lý file");
         
         setLoadingStatus("Đang chờ Gemini xử lý âm thanh/video (Có thể mất 1-5 phút)...");
         setProgress(40);

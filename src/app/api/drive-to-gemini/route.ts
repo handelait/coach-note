@@ -9,31 +9,15 @@ import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 
 ffmpeg.setFfmpegPath(ffmpegPath.path);
 
-// Local memory cache for background jobs
-const jobs: Record<string, any> = {};
-
 export async function POST(req: Request) {
   try {
-    const { action, fileId, apiKey, jobId } = await req.json();
-
-    if (action === 'status') {
-      const job = jobs[jobId];
-      if (!job) return NextResponse.json({ status: 'error', error: "Job not found" });
-      return NextResponse.json(job);
-    }
+    const { action, fileId, apiKey } = await req.json();
 
     if (action === 'start') {
       if (!fileId || !apiKey) return NextResponse.json({ error: "Missing fields" }, { status: 400 });
-      const newJobId = Math.random().toString(36).substring(7);
-      jobs[newJobId] = { status: 'starting' };
       
-      // Fire and forget
-      runBackgroundUpload(newJobId, fileId, apiKey).catch(e => {
-        console.error("Background error:", e);
-        jobs[newJobId] = { status: 'error', error: e.message };
-      });
-
-      return NextResponse.json({ jobId: newJobId });
+      const result = await runBackgroundUpload(fileId, apiKey);
+      return NextResponse.json({ status: 'completed', ...result });
     }
 
   } catch (e: any) {
@@ -41,8 +25,7 @@ export async function POST(req: Request) {
   }
 }
 
-async function runBackgroundUpload(jobId: string, fileId: string, apiKey: string) {
-    jobs[jobId] = { status: 'connecting' };
+async function runBackgroundUpload(fileId: string, apiKey: string) {
     
     let driveUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
     let driveRes = await fetch(driveUrl);
@@ -71,18 +54,17 @@ async function runBackgroundUpload(jobId: string, fileId: string, apiKey: string
 
     const mimeType = driveRes.headers.get('content-type') || "video/mp4";
 
+    const jobId = Math.random().toString(36).substring(7);
     const tmpDir = os.tmpdir();
 
     const videoPath = path.join(tmpDir, `${jobId}.mp4`);
     const audioPath = path.join(tmpDir, `${jobId}.m4a`);
-
-    jobs[jobId] = { status: 'downloading_video' };
     
     // Download to disk
     const nodeStream = Readable.fromWeb(driveRes.body as any);
     await pipeline(nodeStream, fs.createWriteStream(videoPath));
     
-    jobs[jobId] = { status: 'extracting_audio' };
+
 
     await new Promise((resolve, reject) => {
         ffmpeg(videoPath)
@@ -96,7 +78,7 @@ async function runBackgroundUpload(jobId: string, fileId: string, apiKey: string
     // Cleanup video to save disk space immediately
     if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
 
-    jobs[jobId] = { status: 'uploading' };
+
 
     const stats = fs.statSync(audioPath);
     const audioContentLength = stats.size.toString();
@@ -139,8 +121,7 @@ async function runBackgroundUpload(jobId: string, fileId: string, apiKey: string
     if (!uploadRes.ok) throw new Error("Upload to Gemini failed: " + await uploadRes.text());
 
     const fileInfo = await uploadRes.json();
-    jobs[jobId] = {
-      status: 'completed',
+    return {
       uri: fileInfo.file.uri,
       name: fileInfo.file.name,
       mimeType: "audio/mp4"
