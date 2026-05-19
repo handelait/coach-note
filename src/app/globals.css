@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: theme('colors.surface');
+  color: #333333;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-accent hover:bg-accent-hover text-primary font-medium py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2;
+  }
+}
