@@ -42,6 +42,15 @@ export default function WorkspacePage() {
   
   const editorRef = useRef<HTMLDivElement>(null);
 
+  const handleChangeKey = () => {
+    const newKey = prompt("Vui lòng nhập Google AI Studio API key MỚI của bạn:");
+    if (newKey) {
+      setApiKey(newKey);
+      localStorage.setItem("coachnote_api_key", newKey);
+      alert("Đã cập nhật API Key mới thành công!");
+    }
+  };
+
   const handleGenerate = async () => {
     if (!selectedFile && !driveLink.trim()) {
       setError("Vui lòng tải lên File Audio/Video hoặc dán link Google Drive.");
@@ -237,10 +246,13 @@ export default function WorkspacePage() {
     <div className="flex h-screen bg-surface overflow-hidden">
       {/* Sidebar */}
       <aside className="w-[340px] bg-white border-r border-gray-200 flex flex-col h-full z-10 shadow-sm relative shrink-0">
-        <div className="p-6 pb-2 border-b border-gray-100">
+        <div className="p-6 pb-2 border-b border-gray-100 flex justify-between items-center">
           <h1 className="text-xl font-bold text-primary flex items-center gap-2">
             CoachNote
           </h1>
+          <button onClick={handleChangeKey} className="text-[10px] font-semibold text-gray-400 hover:text-primary transition-colors uppercase tracking-wider">
+            Đổi API Key
+          </button>
         </div>
 
         <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-6 custom-scrollbar">

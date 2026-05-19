@@ -66,41 +66,8 @@ export const generateRecap = async (
   fileMimeType?: string
 ): Promise<RecapResult> => {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ 
-    model: "gemini-2.5-flash",
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          title: { type: SchemaType.STRING, description: "Tiêu đề của Recap" },
-          paragraphs: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                text: { type: SchemaType.STRING },
-                isInsight: { type: SchemaType.BOOLEAN }
-              },
-              required: ["text", "isInsight"]
-            }
-          },
-          citations: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                id: { type: SchemaType.NUMBER },
-                context: { type: SchemaType.STRING }
-              },
-              required: ["id", "context"]
-            }
-          }
-        },
-        required: ["title", "paragraphs", "citations"]
-      }
-    }
-  });
+  const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash"];
+  let lastError: any;
 
   const prompt = getPromptTemplate(type, transcript);
   const parts: any[] = [{ text: prompt }];
@@ -114,19 +81,64 @@ export const generateRecap = async (
     });
   }
 
-  try {
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts }],
-    });
-    const responseText = result.response.text();
-    
-    // Attempt to parse JSON safely. Gemini might wrap it in markdown code blocks.
-    const jsonString = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsedData: RecapResult = JSON.parse(jsonString);
-    
-    return parsedData;
-  } catch (error: any) {
-    console.error("Error generating recap:", error);
-    throw new Error(error.message || "Failed to generate recap. Please check your API key and try again.");
+  for (const modelName of modelsToTry) {
+    try {
+      const model = genAI.getGenerativeModel({ 
+        model: modelName,
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: SchemaType.OBJECT,
+            properties: {
+              title: { type: SchemaType.STRING, description: "Tiêu đề của Recap" },
+              paragraphs: {
+                type: SchemaType.ARRAY,
+                items: {
+                  type: SchemaType.OBJECT,
+                  properties: {
+                    text: { type: SchemaType.STRING },
+                    isInsight: { type: SchemaType.BOOLEAN }
+                  },
+                  required: ["text", "isInsight"]
+                }
+              },
+              citations: {
+                type: SchemaType.ARRAY,
+                items: {
+                  type: SchemaType.OBJECT,
+                  properties: {
+                    id: { type: SchemaType.NUMBER },
+                    context: { type: SchemaType.STRING }
+                  },
+                  required: ["id", "context"]
+                }
+              }
+            },
+            required: ["title", "paragraphs", "citations"]
+          }
+        }
+      });
+
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts }],
+      });
+      const responseText = result.response.text();
+      
+      const jsonString = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+      const parsedData: RecapResult = JSON.parse(jsonString);
+      
+      return parsedData;
+    } catch (error: any) {
+      console.warn(`Model ${modelName} failed:`, error.message);
+      lastError = error;
+      
+      // If the error is NOT a 503 (High Demand) or 429 (Quota), throw immediately
+      if (!error.message || (!error.message.includes('503') && !error.message.includes('429'))) {
+        throw new Error(error.message || "Failed to generate recap. Please check your API key and try again.");
+      }
+      // Otherwise, continue to the next model
+    }
   }
+
+  throw new Error(lastError?.message || "All models failed due to high demand or quota limits.");
 };
