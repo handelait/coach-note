@@ -9,6 +9,8 @@ import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 
 ffmpeg.setFfmpegPath(ffmpegPath.path);
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   try {
     const { action, fileId, apiKey } = await req.json();
@@ -28,7 +30,7 @@ export async function POST(req: Request) {
 async function runBackgroundUpload(fileId: string, apiKey: string) {
     
     let driveUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
-    let driveRes = await fetch(driveUrl);
+    let driveRes = await fetch(driveUrl, { cache: 'no-store' });
     
     const contentType = driveRes.headers.get('content-type');
     if (contentType && contentType.includes('text/html')) {
@@ -44,7 +46,7 @@ async function runBackgroundUpload(fileId: string, apiKey: string) {
         for (const match of Array.from(inputMatches)) {
           params.append(match[1], match[2]);
         }
-        driveRes = await fetch(newUrl + "?" + params.toString());
+        driveRes = await fetch(newUrl + "?" + params.toString(), { cache: 'no-store' });
       } else {
         throw new Error("Không thể vượt qua xác thực Drive. Hãy đảm bảo link đã cấp quyền 'Bất kỳ ai có liên kết đều xem được'.");
       }
