@@ -64,7 +64,7 @@ export const generateTranscript = async (
   fileMimeType: string
 ): Promise<string> => {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const maxRetries = 3;
+  const maxRetries = 5;
   let lastError: any;
 
   const parts = [
@@ -80,10 +80,15 @@ export const generateTranscript = async (
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent({
+      const result = await model.generateContentStream({
         contents: [{ role: "user", parts }],
       });
-      const transcriptText = result.response.text();
+      
+      let transcriptText = "";
+      for await (const chunk of result.stream) {
+        transcriptText += chunk.text();
+      }
+      
       if (!transcriptText || !transcriptText.trim()) {
         throw new Error("Gemini không nghe được âm thanh nào hoặc file audio bị hỏng/trống.");
       }
@@ -93,15 +98,18 @@ export const generateTranscript = async (
       lastError = error;
       if (error.message && (error.message.includes('503') || error.message.includes('429'))) {
         if (attempt < maxRetries) {
-          // Wait 3 seconds before retrying
-          await new Promise(r => setTimeout(r, 3000));
+          // Wait 5 seconds before retrying
+          await new Promise(r => setTimeout(r, 5000));
           continue;
         }
+      }
+      if (error.message && error.message.includes('503')) {
+        throw new Error("Hệ thống máy chủ của Google AI đang bị quá tải nặng trên toàn cầu. Đã thử lại 5 lần nhưng không thành công. Vui lòng nghỉ tay uống ngụm nước và thử lại sau 5 phút nhé.");
       }
       throw new Error(error.message || "Lỗi khi bóc băng âm thanh.");
     }
   }
-  throw new Error(lastError?.message || "Hệ thống AI đang quá tải, vui lòng thử lại sau vài phút.");
+  throw new Error("Hệ thống AI đang quá tải, vui lòng thử lại sau vài phút.");
 };
 
 
@@ -182,14 +190,17 @@ export const generateRecap = async (
       const isSyntaxError = error instanceof SyntaxError || (error.message && error.message.includes("Unexpected token"));
       if ((error.message && (error.message.includes('503') || error.message.includes('429'))) || isSyntaxError) {
         if (attempt < maxRetries) {
-          // Wait 3 seconds before retrying
-          await new Promise(r => setTimeout(r, 3000));
+          // Wait 5 seconds before retrying
+          await new Promise(r => setTimeout(r, 5000));
           continue;
         }
+      }
+      if (error.message && error.message.includes('503')) {
+        throw new Error("Hệ thống máy chủ của Google AI đang bị quá tải nặng trên toàn cầu. Đã thử lại 5 lần nhưng không thành công. Vui lòng nghỉ tay uống ngụm nước và thử lại sau 5 phút nhé.");
       }
       throw new Error(error.message || "Failed to generate recap. Please check your API key and try again.");
     }
   }
 
-  throw new Error(lastError?.message || "Hệ thống AI đang quá tải, vui lòng thử lại sau vài phút.");
+  throw new Error("Hệ thống AI đang quá tải, vui lòng thử lại sau vài phút.");
 };
