@@ -57,28 +57,18 @@ async function runBackgroundUpload(fileId: string, apiKey: string) {
     const jobId = Math.random().toString(36).substring(7);
     const tmpDir = os.tmpdir();
 
-    const videoPath = path.join(tmpDir, `${jobId}.mp4`);
     const audioPath = path.join(tmpDir, `${jobId}.m4a`);
     
-    // Download to disk
     const nodeStream = Readable.fromWeb(driveRes.body as any);
-    await pipeline(nodeStream, fs.createWriteStream(videoPath));
-    
-
 
     await new Promise((resolve, reject) => {
-        ffmpeg(videoPath)
+        ffmpeg(nodeStream)
             .outputOptions('-vn') // no video
             .outputOptions('-acodec copy') // direct copy, no re-encoding (instant)
             .save(audioPath)
             .on('end', resolve)
             .on('error', reject);
     });
-
-    // Cleanup video to save disk space immediately
-    if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
-
-
 
     const stats = fs.statSync(audioPath);
     const audioContentLength = stats.size.toString();
