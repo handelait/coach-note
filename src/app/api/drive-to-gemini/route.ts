@@ -1,13 +1,4 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import { pipeline } from 'stream/promises';
-import { Readable } from 'stream';
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegPath from '@ffmpeg-installer/ffmpeg';
-
-ffmpeg.setFfmpegPath(ffmpegPath.path);
 
 export const dynamic = 'force-dynamic';
 
@@ -54,37 +45,19 @@ async function runBackgroundUpload(fileId: string, apiKey: string) {
 
     if (!driveRes.ok) throw new Error("Lỗi khi tải file từ Google Drive.");
 
+    const contentLength = driveRes.headers.get('content-length');
     const mimeType = driveRes.headers.get('content-type') || "video/mp4";
-
-    const jobId = Math.random().toString(36).substring(7);
-    const tmpDir = os.tmpdir();
-
-    const audioPath = path.join(tmpDir, `${jobId}.m4a`);
-    
-    const nodeStream = Readable.fromWeb(driveRes.body as any);
-
-    await new Promise((resolve, reject) => {
-        ffmpeg(nodeStream)
-            .outputOptions('-vn') // no video
-            .outputOptions('-acodec copy') // direct copy, no re-encoding (instant)
-            .save(audioPath)
-            .on('end', resolve)
-            .on('error', reject);
-    });
-
-    const stats = fs.statSync(audioPath);
-    const audioContentLength = stats.size.toString();
 
     const initRes = await fetch("https://generativelanguage.googleapis.com/upload/v1beta/files?key=" + apiKey, {
       method: 'POST',
       headers: {
         'X-Goog-Upload-Protocol': 'resumable',
         'X-Goog-Upload-Command': 'start',
-        'X-Goog-Upload-Header-Content-Length': audioContentLength,
-        'X-Goog-Upload-Header-Content-Type': "audio/mp4",
+        ...(contentLength ? { 'X-Goog-Upload-Header-Content-Length': contentLength } : {}),
+        'X-Goog-Upload-Header-Content-Type': mimeType,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ file: { displayName: "DriveAudio-" + fileId } })
+      body: JSON.stringify({ file: { displayName: "DriveFile-" + fileId } })
     });
 
     if (!initRes.ok) throw new Error("Gemini Init Failed: " + await initRes.text());
@@ -92,32 +65,24 @@ async function runBackgroundUpload(fileId: string, apiKey: string) {
     const uploadUrl = initRes.headers.get('x-goog-upload-url');
     if (!uploadUrl) throw new Error("No upload URL");
 
-    try {
-      // Read audio as node stream, convert to web stream for fetch
-      const audioStream = fs.createReadStream(audioPath);
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'X-Goog-Upload-Command': 'upload, finalize',
+        'X-Goog-Upload-Offset': '0',
+      },
+      // @ts-ignore
+      body: driveRes.body,
+      // @ts-ignore
+      duplex: 'half',
+    });
 
-      const uploadRes = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'X-Goog-Upload-Command': 'upload, finalize',
-          'X-Goog-Upload-Offset': '0',
-        },
-        // @ts-ignore
-        body: Readable.toWeb(audioStream),
-        // @ts-ignore
-        duplex: 'half',
-      });
+    if (!uploadRes.ok) throw new Error("Upload to Gemini failed: " + await uploadRes.text());
 
-      if (!uploadRes.ok) throw new Error("Upload to Gemini failed: " + await uploadRes.text());
-
-      const fileInfo = await uploadRes.json();
-      return {
-        uri: fileInfo.file.uri,
-        name: fileInfo.file.name,
-        mimeType: "audio/mp4"
-      };
-    } finally {
-      // Cleanup audio
-      if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-    }
+    const fileInfo = await uploadRes.json();
+    return {
+      uri: fileInfo.file.uri,
+      name: fileInfo.file.name,
+      mimeType: mimeType
+    };
 }
