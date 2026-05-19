@@ -92,30 +92,32 @@ async function runBackgroundUpload(fileId: string, apiKey: string) {
     const uploadUrl = initRes.headers.get('x-goog-upload-url');
     if (!uploadUrl) throw new Error("No upload URL");
 
-    // Read audio as node stream, convert to web stream for fetch
-    const audioStream = fs.createReadStream(audioPath);
+    try {
+      // Read audio as node stream, convert to web stream for fetch
+      const audioStream = fs.createReadStream(audioPath);
 
-    const uploadRes = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        'X-Goog-Upload-Command': 'upload, finalize',
-        'X-Goog-Upload-Offset': '0',
-      },
-      // @ts-ignore
-      body: Readable.toWeb(audioStream),
-      // @ts-ignore
-      duplex: 'half',
-    });
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'X-Goog-Upload-Command': 'upload, finalize',
+          'X-Goog-Upload-Offset': '0',
+        },
+        // @ts-ignore
+        body: Readable.toWeb(audioStream),
+        // @ts-ignore
+        duplex: 'half',
+      });
 
-    // Cleanup audio
-    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+      if (!uploadRes.ok) throw new Error("Upload to Gemini failed: " + await uploadRes.text());
 
-    if (!uploadRes.ok) throw new Error("Upload to Gemini failed: " + await uploadRes.text());
-
-    const fileInfo = await uploadRes.json();
-    return {
-      uri: fileInfo.file.uri,
-      name: fileInfo.file.name,
-      mimeType: "audio/mp4"
-    };
+      const fileInfo = await uploadRes.json();
+      return {
+        uri: fileInfo.file.uri,
+        name: fileInfo.file.name,
+        mimeType: "audio/mp4"
+      };
+    } finally {
+      // Cleanup audio
+      if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+    }
 }

@@ -42,12 +42,19 @@ export default function WorkspacePage() {
   
   const editorRef = useRef<HTMLDivElement>(null);
 
-  const handleChangeKey = () => {
+  const handleChangeKey = async () => {
     const newKey = prompt("Vui lòng nhập Google AI Studio API key MỚI của bạn:");
-    if (newKey) {
+    if (!newKey) return;
+    
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${newKey}`);
+      if (!res.ok) throw new Error();
+      
       setApiKey(newKey);
       localStorage.setItem("coachnote_api_key", newKey);
-      alert("Đã cập nhật API Key mới thành công!");
+      alert("Đã cập nhật và xác thực API Key thành công!");
+    } catch {
+      alert("API Key không hợp lệ hoặc đã bị khóa. Vui lòng kiểm tra lại.");
     }
   };
 
@@ -55,6 +62,26 @@ export default function WorkspacePage() {
     if (!selectedFile && !driveLink.trim()) {
       setError("Vui lòng tải lên File Audio/Video hoặc dán link Google Drive.");
       return;
+    }
+
+    let testKey = apiKey;
+    if (!testKey) {
+      const inputKey = prompt("Vui lòng nhập Google AI Studio API key để bắt đầu:");
+      if (!inputKey) {
+        setError("Vui lòng cung cấp API Key để sử dụng ứng dụng.");
+        return;
+      }
+      
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${inputKey}`);
+        if (!res.ok) throw new Error();
+        setApiKey(inputKey);
+        localStorage.setItem("coachnote_api_key", inputKey);
+        testKey = inputKey;
+      } catch {
+        setError("API Key không hợp lệ hoặc đã bị khóa. Hãy tạo Key mới trên AI Studio.");
+        return;
+      }
     }
 
     setError("");
@@ -65,13 +92,6 @@ export default function WorkspacePage() {
     setIsCopied(false);
 
     try {
-      const testKey = apiKey || prompt("Please enter your Google AI Studio API key for testing:");
-      if (!testKey) throw new Error("API Key required");
-      
-      if (!apiKey) {
-        setApiKey(testKey);
-        localStorage.setItem("coachnote_api_key", testKey);
-      }
       
       let fileUri = undefined;
       let fileMimeType = undefined;

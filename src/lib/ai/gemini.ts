@@ -64,7 +64,7 @@ export const generateTranscript = async (
   fileMimeType: string
 ): Promise<string> => {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash"];
+  const maxRetries = 3;
   let lastError: any;
 
   const parts = [
@@ -77,22 +77,31 @@ export const generateTranscript = async (
     { text: "Bạn là một trợ lý ảo chuyên nghiệp. Nhiệm vụ duy nhất của bạn là cung cấp bản bóc băng (transcript) nguyên văn, chính xác từng từ một của file âm thanh/video đính kèm này bằng Tiếng Việt. Không tóm tắt, không giải thích, không bỏ sót thông tin. Chỉ xuất ra toàn bộ nội dung lời nói của cuộc hội thoại." }
   ];
 
-  for (const modelName of modelsToTry) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent({
         contents: [{ role: "user", parts }],
       });
-      return result.response.text();
-    } catch (error: any) {
-      console.warn(`Model ${modelName} failed for transcription:`, error.message);
-      lastError = error;
-      if (!error.message || (!error.message.includes('503') && !error.message.includes('429'))) {
-        throw new Error(error.message || "Lỗi khi bóc băng âm thanh.");
+      const transcriptText = result.response.text();
+      if (!transcriptText || !transcriptText.trim()) {
+        throw new Error("Gemini không nghe được âm thanh nào hoặc file audio bị hỏng/trống.");
       }
+      return transcriptText;
+    } catch (error: any) {
+      console.warn(`Attempt ${attempt} failed for transcription:`, error.message);
+      lastError = error;
+      if (error.message && (error.message.includes('503') || error.message.includes('429'))) {
+        if (attempt < maxRetries) {
+          // Wait 3 seconds before retrying
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
+      }
+      throw new Error(error.message || "Lỗi khi bóc băng âm thanh.");
     }
   }
-  throw new Error(lastError?.message || "Tất cả các model AI đều đang quá tải, vui lòng thử lại sau.");
+  throw new Error(lastError?.message || "Hệ thống AI đang quá tải, vui lòng thử lại sau vài phút.");
 };
 
 
@@ -104,7 +113,7 @@ export const generateRecap = async (
   fileMimeType?: string
 ): Promise<RecapResult> => {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash"];
+  const maxRetries = 3;
   let lastError: any;
 
   const prompt = getPromptTemplate(type, transcript);
@@ -119,10 +128,10 @@ export const generateRecap = async (
     });
   }
 
-  for (const modelName of modelsToTry) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const model = genAI.getGenerativeModel({ 
-        model: modelName,
+        model: "gemini-2.5-flash",
         generationConfig: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -167,16 +176,20 @@ export const generateRecap = async (
       
       return parsedData;
     } catch (error: any) {
-      console.warn(`Model ${modelName} failed:`, error.message);
+      console.warn(`Attempt ${attempt} failed for recap:`, error.message);
       lastError = error;
       
-      // If the error is NOT a 503 (High Demand) or 429 (Quota), throw immediately
-      if (!error.message || (!error.message.includes('503') && !error.message.includes('429'))) {
-        throw new Error(error.message || "Failed to generate recap. Please check your API key and try again.");
+      const isSyntaxError = error instanceof SyntaxError || (error.message && error.message.includes("Unexpected token"));
+      if ((error.message && (error.message.includes('503') || error.message.includes('429'))) || isSyntaxError) {
+        if (attempt < maxRetries) {
+          // Wait 3 seconds before retrying
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
       }
-      // Otherwise, continue to the next model
+      throw new Error(error.message || "Failed to generate recap. Please check your API key and try again.");
     }
   }
 
-  throw new Error(lastError?.message || "All models failed due to high demand or quota limits.");
+  throw new Error(lastError?.message || "Hệ thống AI đang quá tải, vui lòng thử lại sau vài phút.");
 };
