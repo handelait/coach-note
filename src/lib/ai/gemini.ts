@@ -92,6 +92,13 @@ export const generateTranscript = async (
       if (!transcriptText || !transcriptText.trim()) {
         throw new Error("Gemini không nghe được âm thanh nào hoặc file audio bị hỏng/trống.");
       }
+
+      // DEBUG: If Gemini refused to transcribe, it usually outputs a short apology.
+      // If the transcript is shorter than 200 characters, it's highly likely a refusal or error message from Gemini, not a 1-hour coaching session.
+      if (transcriptText.length < 200) {
+         throw new Error("Gemini từ chối bóc băng. Phản hồi thực tế của Gemini: " + transcriptText);
+      }
+
       return transcriptText;
     } catch (error: any) {
       console.warn(`Attempt ${attempt} failed for transcription:`, error.message);
