@@ -58,6 +58,44 @@ export async function waitForFileProcessing(apiKey: string, fileName: string) {
   }
 }
 
+export const generateTranscript = async (
+  apiKey: string,
+  fileUri: string,
+  fileMimeType: string
+): Promise<string> => {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash"];
+  let lastError: any;
+
+  const parts = [
+    {
+      fileData: {
+        fileUri: fileUri,
+        mimeType: fileMimeType,
+      }
+    },
+    { text: "Bạn là một trợ lý ảo chuyên nghiệp. Nhiệm vụ duy nhất của bạn là cung cấp bản bóc băng (transcript) nguyên văn, chính xác từng từ một của file âm thanh/video đính kèm này bằng Tiếng Việt. Không tóm tắt, không giải thích, không bỏ sót thông tin. Chỉ xuất ra toàn bộ nội dung lời nói của cuộc hội thoại." }
+  ];
+
+  for (const modelName of modelsToTry) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts }],
+      });
+      return result.response.text();
+    } catch (error: any) {
+      console.warn(`Model ${modelName} failed for transcription:`, error.message);
+      lastError = error;
+      if (!error.message || (!error.message.includes('503') && !error.message.includes('429'))) {
+        throw new Error(error.message || "Lỗi khi bóc băng âm thanh.");
+      }
+    }
+  }
+  throw new Error(lastError?.message || "Tất cả các model AI đều đang quá tải, vui lòng thử lại sau.");
+};
+
+
 export const generateRecap = async (
   apiKey: string,
   type: "client" | "coach",

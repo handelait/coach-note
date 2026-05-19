@@ -19,7 +19,7 @@ import {
   AlertCircle,
   X
 } from "lucide-react";
-import { generateRecap, uploadFileToGemini, waitForFileProcessing, RecapResult } from "@/lib/ai/gemini";
+import { uploadFileToGemini, generateRecap, RecapResult, waitForFileProcessing, generateTranscript } from '@/lib/ai/gemini';
 import { marked } from "marked";
 
 export default function WorkspacePage() {
@@ -119,7 +119,17 @@ export default function WorkspacePage() {
         fileMimeType = selectedFile.type;
       }
       
-      setLoadingStatus("Đang bắt đầu phân tích Recap...");
+      setLoadingStatus("Đang nhờ Gemini bóc băng âm thanh (Transcribing)...");
+      setProgress(50);
+      
+      let finalTranscript = "";
+      try {
+        finalTranscript = await generateTranscript(testKey, fileUri, fileMimeType!);
+      } catch (err: any) {
+        throw new Error("Lỗi khi bóc băng: " + err.message);
+      }
+      
+      setLoadingStatus("Đang bắt đầu phân tích Recap từ bản bóc băng...");
       setProgress(60);
 
       // Phase 2: Generate Content
@@ -128,7 +138,7 @@ export default function WorkspacePage() {
       }, 1000);
 
       try {
-        const recapData = await generateRecap(testKey, activeTab, "", fileUri, fileMimeType);
+        const recapData = await generateRecap(testKey, activeTab, finalTranscript);
         clearInterval(progressInterval);
         setResult(recapData);
         setProgress(100);
