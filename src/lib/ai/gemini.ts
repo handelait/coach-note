@@ -56,6 +56,8 @@ export async function waitForFileProcessing(apiKey: string, fileName: string) {
     if (data.state === 'FAILED') throw new Error("Gemini failed to process the media file");
     await new Promise(resolve => setTimeout(resolve, 5000));
   }
+}
+
 let cachedModelNames: string[] = [];
 
 export const getBestModelNames = async (apiKey: string): Promise<string[]> => {
