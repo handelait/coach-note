@@ -56,40 +56,40 @@ export async function waitForFileProcessing(apiKey: string, fileName: string) {
     if (data.state === 'FAILED') throw new Error("Gemini failed to process the media file");
     await new Promise(resolve => setTimeout(resolve, 5000));
   }
-}
+let cachedModelNames: string[] = [];
 
-let cachedModelName = "";
-
-export const getBestModelName = async (apiKey: string): Promise<string> => {
-  if (cachedModelName) return cachedModelName;
+export const getBestModelNames = async (apiKey: string): Promise<string[]> => {
+  if (cachedModelNames.length > 0) return cachedModelNames;
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    if (!res.ok) return "gemini-1.5-flash";
+    if (!res.ok) return ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
     const data = await res.json();
     const models = data.models || [];
     const supportedModels = models.filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'));
-    const names = supportedModels.map((m: any) => m.name.replace('models/', ''));
+    let names = supportedModels.map((m: any) => m.name.replace('models/', ''));
     
-    // Prioritize models in this order (Pro is smarter and often has dedicated capacity like AI Studio)
+    // Sort models based on preference
     const preferences = [
-      "gemini-2.5-pro",
       "gemini-2.5-flash",
-      "gemini-1.5-pro", 
-      "gemini-1.5-flash", 
+      "gemini-1.5-flash",
       "gemini-2.0-flash", 
+      "gemini-2.5-pro",
+      "gemini-1.5-pro", 
       "gemini-1.0-pro"
     ];
+    
+    let sorted: string[] = [];
     for (const pref of preferences) {
-      const match = names.find((name: string) => name.startsWith(pref));
-      if (match) {
-        cachedModelName = match;
-        return match;
-      }
+      const matches = names.filter((name: string) => name.startsWith(pref));
+      sorted.push(...matches);
+      names = names.filter((name: string) => !name.startsWith(pref)); // remove added
     }
-    cachedModelName = names[0] || "gemini-1.5-flash";
-    return cachedModelName;
+    sorted.push(...names); // append any remaining models
+
+    cachedModelNames = sorted.length > 0 ? sorted : ["gemini-2.5-flash", "gemini-1.5-flash"];
+    return cachedModelNames;
   } catch {
-    return "gemini-1.5-flash";
+    return ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
   }
 };
 
@@ -112,48 +112,55 @@ export const generateTranscript = async (
     { text: "Bạn là một trợ lý ảo chuyên nghiệp. Nhiệm vụ duy nhất của bạn là cung cấp bản bóc băng (transcript) nguyên văn, chính xác từng từ một của file âm thanh/video đính kèm này bằng Tiếng Việt. Không tóm tắt, không giải thích, không bỏ sót thông tin. Chỉ xuất ra toàn bộ nội dung lời nói của cuộc hội thoại." }
   ];
 
-  const modelName = await getBestModelName(apiKey);
+  const availableModels = await getBestModelNames(apiKey);
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const model = genAI.getGenerativeModel({ model: modelName });
-      const result = await model.generateContentStream({
-        contents: [{ role: "user", parts }],
-      });
-      
-      let transcriptText = "";
-      for await (const chunk of result.stream) {
-        transcriptText += chunk.text();
-      }
-      
-      if (!transcriptText || !transcriptText.trim()) {
-        throw new Error("Gemini không nghe được âm thanh nào hoặc file audio bị hỏng/trống.");
-      }
-
-      // Check if Gemini explicitly refused
-      const lowerText = transcriptText.toLowerCase();
-      if (lowerText.includes("tôi không thể") && lowerText.includes("cung cấp")) {
-         console.warn("Possible Gemini refusal:", transcriptText);
-      }
-
-      return transcriptText;
-    } catch (error: any) {
-      console.warn(`Attempt ${attempt} failed for transcription:`, error.message);
-      lastError = error;
-      if (error.message && (error.message.includes('503') || error.message.includes('429'))) {
-        if (attempt < maxRetries) {
-          // Wait 5 seconds before retrying
-          await new Promise(r => setTimeout(r, 5000));
-          continue;
+  for (const modelName of availableModels) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContentStream({
+          contents: [{ role: "user", parts }],
+        });
+        
+        let transcriptText = "";
+        for await (const chunk of result.stream) {
+          transcriptText += chunk.text();
         }
+        
+        if (!transcriptText || !transcriptText.trim()) {
+          throw new Error("Gemini không nghe được âm thanh nào hoặc file audio bị hỏng/trống.");
+        }
+
+        // Check if Gemini explicitly refused
+        const lowerText = transcriptText.toLowerCase();
+        if (lowerText.includes("tôi không thể") && lowerText.includes("cung cấp")) {
+           console.warn("Possible Gemini refusal:", transcriptText);
+        }
+
+        return transcriptText;
+      } catch (error: any) {
+        console.warn(`Model ${modelName} (Attempt ${attempt}) failed for transcription:`, error.message);
+        lastError = error;
+        
+        // If it's a 429 (Quota) or 404, DO NOT retry this model, break the attempt loop and move to NEXT model
+        if (error.message && (error.message.includes('429') || error.message.includes('404'))) {
+           break; 
+        }
+
+        if (error.message && error.message.includes('503')) {
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 5000));
+            continue;
+          }
+          break; // Move to next model after 2 failed 503 attempts
+        }
+        
+        // Unhandled error
+        throw new Error(error.message || "Lỗi khi bóc băng âm thanh.");
       }
-      if (error.message && error.message.includes('503')) {
-        throw new Error("Hệ thống máy chủ của Google AI đang bị quá tải nặng trên toàn cầu. Đã thử lại 5 lần nhưng không thành công. Vui lòng nghỉ tay uống ngụm nước và thử lại sau 5 phút nhé.");
-      }
-      throw new Error(error.message || "Lỗi khi bóc băng âm thanh.");
     }
   }
-  throw new Error("Hệ thống AI đang quá tải, vui lòng thử lại sau vài phút.");
+  throw new Error("Hệ thống máy chủ của Google AI đang từ chối tất cả các yêu cầu. Vui lòng kiểm tra lại tài khoản hoặc thử lại sau 5 phút.");
 };
 
 
@@ -180,73 +187,78 @@ export const generateRecap = async (
     });
   }
 
-  const modelName = await getBestModelName(apiKey);
+  const availableModels = await getBestModelNames(apiKey);
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const model = genAI.getGenerativeModel({ 
-        model: modelName,
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: SchemaType.OBJECT,
-            properties: {
-              title: { type: SchemaType.STRING, description: "Tiêu đề của Recap" },
-              paragraphs: {
-                type: SchemaType.ARRAY,
-                items: {
-                  type: SchemaType.OBJECT,
-                  properties: {
-                    text: { type: SchemaType.STRING },
-                    isInsight: { type: SchemaType.BOOLEAN }
-                  },
-                  required: ["text", "isInsight"]
+  for (const modelName of availableModels) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({ 
+          model: modelName,
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: SchemaType.OBJECT,
+              properties: {
+                title: { type: SchemaType.STRING, description: "Tiêu đề của Recap" },
+                paragraphs: {
+                  type: SchemaType.ARRAY,
+                  items: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                      text: { type: SchemaType.STRING },
+                      isInsight: { type: SchemaType.BOOLEAN }
+                    },
+                    required: ["text", "isInsight"]
+                  }
+                },
+                citations: {
+                  type: SchemaType.ARRAY,
+                  items: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                      id: { type: SchemaType.NUMBER },
+                      context: { type: SchemaType.STRING }
+                    },
+                    required: ["id", "context"]
+                  }
                 }
               },
-              citations: {
-                type: SchemaType.ARRAY,
-                items: {
-                  type: SchemaType.OBJECT,
-                  properties: {
-                    id: { type: SchemaType.NUMBER },
-                    context: { type: SchemaType.STRING }
-                  },
-                  required: ["id", "context"]
-                }
-              }
-            },
-            required: ["title", "paragraphs", "citations"]
+              required: ["title", "paragraphs", "citations"]
+            }
           }
-        }
-      });
+        });
 
-      const result = await model.generateContent({
-        contents: [{ role: "user", parts }],
-      });
-      const responseText = result.response.text();
-      
-      const jsonString = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-      const parsedData: RecapResult = JSON.parse(jsonString);
-      
-      return parsedData;
-    } catch (error: any) {
-      console.warn(`Attempt ${attempt} failed for recap:`, error.message);
-      lastError = error;
-      
-      const isSyntaxError = error instanceof SyntaxError || (error.message && error.message.includes("Unexpected token"));
-      if ((error.message && (error.message.includes('503') || error.message.includes('429'))) || isSyntaxError) {
-        if (attempt < maxRetries) {
-          // Wait 5 seconds before retrying
-          await new Promise(r => setTimeout(r, 5000));
-          continue;
+        const result = await model.generateContent({
+          contents: [{ role: "user", parts }],
+        });
+        const responseText = result.response.text();
+        
+        const jsonString = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+        const parsedData: RecapResult = JSON.parse(jsonString);
+        
+        return parsedData;
+      } catch (error: any) {
+        console.warn(`Model ${modelName} (Attempt ${attempt}) failed for recap:`, error.message);
+        lastError = error;
+        
+        const isSyntaxError = error instanceof SyntaxError || (error.message && error.message.includes("Unexpected token"));
+        
+        if (error.message && (error.message.includes('429') || error.message.includes('404'))) {
+           break; 
         }
+
+        if (error.message && error.message.includes('503') || isSyntaxError) {
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 5000));
+            continue;
+          }
+          break;
+        }
+        
+        throw new Error(error.message || "Failed to generate recap. Please check your API key and try again.");
       }
-      if (error.message && error.message.includes('503')) {
-        throw new Error("Hệ thống máy chủ của Google AI đang bị quá tải nặng trên toàn cầu. Đã thử lại 5 lần nhưng không thành công. Vui lòng nghỉ tay uống ngụm nước và thử lại sau 5 phút nhé.");
-      }
-      throw new Error(error.message || "Failed to generate recap. Please check your API key and try again.");
     }
   }
 
-  throw new Error("Hệ thống AI đang quá tải, vui lòng thử lại sau vài phút.");
+  throw new Error("Hệ thống AI đang quá tải hoặc từ chối kết nối, vui lòng thử lại sau vài phút.");
 };
