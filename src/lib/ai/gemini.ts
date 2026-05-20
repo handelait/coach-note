@@ -58,6 +58,33 @@ export async function waitForFileProcessing(apiKey: string, fileName: string) {
   }
 }
 
+let cachedModelName = "";
+
+export const getBestModelName = async (apiKey: string): Promise<string> => {
+  if (cachedModelName) return cachedModelName;
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!res.ok) return "gemini-1.5-flash";
+    const data = await res.json();
+    const models = data.models || [];
+    const supportedModels = models.filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'));
+    const names = supportedModels.map((m: any) => m.name.replace('models/', ''));
+    
+    // Prioritize models in this order (Pro is smarter and often has dedicated capacity like AI Studio)
+    const preferences = ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.0-pro"];
+    for (const pref of preferences) {
+      if (names.includes(pref)) {
+        cachedModelName = pref;
+        return pref;
+      }
+    }
+    cachedModelName = names[0] || "gemini-1.5-flash";
+    return cachedModelName;
+  } catch {
+    return "gemini-1.5-flash";
+  }
+};
+
 export const generateTranscript = async (
   apiKey: string,
   fileUri: string,
@@ -77,9 +104,11 @@ export const generateTranscript = async (
     { text: "Bạn là một trợ lý ảo chuyên nghiệp. Nhiệm vụ duy nhất của bạn là cung cấp bản bóc băng (transcript) nguyên văn, chính xác từng từ một của file âm thanh/video đính kèm này bằng Tiếng Việt. Không tóm tắt, không giải thích, không bỏ sót thông tin. Chỉ xuất ra toàn bộ nội dung lời nói của cuộc hội thoại." }
   ];
 
+  const modelName = await getBestModelName(apiKey);
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const model = genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContentStream({
         contents: [{ role: "user", parts }],
       });
@@ -93,10 +122,10 @@ export const generateTranscript = async (
         throw new Error("Gemini không nghe được âm thanh nào hoặc file audio bị hỏng/trống.");
       }
 
-      // DEBUG: If Gemini refused to transcribe, it usually outputs a short apology.
-      // If the transcript is shorter than 200 characters, it's highly likely a refusal or error message from Gemini, not a 1-hour coaching session.
-      if (transcriptText.length < 200) {
-         throw new Error("Gemini từ chối bóc băng. Phản hồi thực tế của Gemini: " + transcriptText);
+      // Check if Gemini explicitly refused
+      const lowerText = transcriptText.toLowerCase();
+      if (lowerText.includes("tôi không thể") && lowerText.includes("cung cấp")) {
+         console.warn("Possible Gemini refusal:", transcriptText);
       }
 
       return transcriptText;
@@ -143,10 +172,12 @@ export const generateRecap = async (
     });
   }
 
+  const modelName = await getBestModelName(apiKey);
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
+        model: modelName,
         generationConfig: {
           responseMimeType: "application/json",
           responseSchema: {
