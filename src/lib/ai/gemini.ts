@@ -73,9 +73,10 @@ export const getBestModelName = async (apiKey: string): Promise<string> => {
     // Prioritize models in this order (Pro is smarter and often has dedicated capacity like AI Studio)
     const preferences = ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.0-pro"];
     for (const pref of preferences) {
-      if (names.includes(pref)) {
-        cachedModelName = pref;
-        return pref;
+      const match = names.find((name: string) => name.startsWith(pref));
+      if (match) {
+        cachedModelName = match;
+        return match;
       }
     }
     cachedModelName = names[0] || "gemini-1.5-flash";
