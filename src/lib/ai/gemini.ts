@@ -117,6 +117,7 @@ export const generateTranscript = async (
   ];
 
   const availableModels = await getBestModelNames(apiKey);
+  const errorLogs: string[] = [];
 
   for (const modelName of availableModels) {
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -143,15 +144,17 @@ export const generateTranscript = async (
 
         return transcriptText;
       } catch (error: any) {
+        const errMsg = error.message || "Lỗi không xác định";
+        errorLogs.push(`[${modelName}]: ${errMsg.substring(0, 50)}...`);
         console.warn(`Model ${modelName} (Attempt ${attempt}) failed for transcription:`, error.message);
         lastError = error;
         
         // If it's a 429 (Quota), 404 (Not Found), or 400 (Bad Request/Token Limit), DO NOT retry this model, break the attempt loop and move to NEXT model
-        if (error.message && (error.message.includes('429') || error.message.includes('404') || error.message.includes('400'))) {
+        if (errMsg.includes('429') || errMsg.includes('404') || errMsg.includes('400')) {
            break; 
         }
 
-        if (error.message && error.message.includes('503')) {
+        if (errMsg.includes('503')) {
           if (attempt < 2) {
             await new Promise(r => setTimeout(r, 5000));
             continue;
@@ -160,11 +163,11 @@ export const generateTranscript = async (
         }
         
         // Unhandled error
-        throw new Error(error.message || "Lỗi khi bóc băng âm thanh.");
+        break; // break loop and try next model
       }
     }
   }
-  throw new Error("Hệ thống máy chủ của Google AI đang từ chối tất cả các yêu cầu. Vui lòng kiểm tra lại tài khoản hoặc thử lại sau 5 phút.");
+  throw new Error(`Google AI từ chối toàn bộ model. Chi tiết lỗi: ${errorLogs.join(" | ")}. Vui lòng kiểm tra lại Quota của API Key trên AI Studio.`);
 };
 
 
@@ -192,6 +195,7 @@ export const generateRecap = async (
   }
 
   const availableModels = await getBestModelNames(apiKey);
+  const errorLogs: string[] = [];
 
   for (const modelName of availableModels) {
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -242,16 +246,18 @@ export const generateRecap = async (
         
         return parsedData;
       } catch (error: any) {
+        const errMsg = error.message || "Lỗi không xác định";
+        errorLogs.push(`[${modelName}]: ${errMsg.substring(0, 50)}...`);
         console.warn(`Model ${modelName} (Attempt ${attempt}) failed for recap:`, error.message);
         lastError = error;
         
-        const isSyntaxError = error instanceof SyntaxError || (error.message && error.message.includes("Unexpected token"));
+        const isSyntaxError = error instanceof SyntaxError || errMsg.includes("Unexpected token");
         
-        if (error.message && (error.message.includes('429') || error.message.includes('404') || error.message.includes('400'))) {
+        if (errMsg.includes('429') || errMsg.includes('404') || errMsg.includes('400')) {
            break; 
         }
 
-        if (error.message && error.message.includes('503') || isSyntaxError) {
+        if (errMsg.includes('503') || isSyntaxError) {
           if (attempt < 2) {
             await new Promise(r => setTimeout(r, 5000));
             continue;
@@ -259,10 +265,10 @@ export const generateRecap = async (
           break;
         }
         
-        throw new Error(error.message || "Failed to generate recap. Please check your API key and try again.");
+        break;
       }
     }
   }
 
-  throw new Error("Hệ thống AI đang quá tải hoặc từ chối kết nối, vui lòng thử lại sau vài phút.");
+  throw new Error(`Google AI từ chối tạo Recap. Chi tiết lỗi: ${errorLogs.join(" | ")}`);
 };
