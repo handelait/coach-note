@@ -68,7 +68,9 @@ export const getBestModelNames = async (apiKey: string): Promise<string[]> => {
     const data = await res.json();
     const models = data.models || [];
     const supportedModels = models.filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'));
-    let names = supportedModels.map((m: any) => m.name.replace('models/', ''));
+    let names = supportedModels
+      .map((m: any) => m.name.replace('models/', ''))
+      .filter((n: string) => !n.includes('tts') && !n.includes('8b'));
     
     // Sort models based on preference
     const preferences = [
@@ -144,8 +146,8 @@ export const generateTranscript = async (
         console.warn(`Model ${modelName} (Attempt ${attempt}) failed for transcription:`, error.message);
         lastError = error;
         
-        // If it's a 429 (Quota) or 404, DO NOT retry this model, break the attempt loop and move to NEXT model
-        if (error.message && (error.message.includes('429') || error.message.includes('404'))) {
+        // If it's a 429 (Quota), 404 (Not Found), or 400 (Bad Request/Token Limit), DO NOT retry this model, break the attempt loop and move to NEXT model
+        if (error.message && (error.message.includes('429') || error.message.includes('404') || error.message.includes('400'))) {
            break; 
         }
 
@@ -245,7 +247,7 @@ export const generateRecap = async (
         
         const isSyntaxError = error instanceof SyntaxError || (error.message && error.message.includes("Unexpected token"));
         
-        if (error.message && (error.message.includes('429') || error.message.includes('404'))) {
+        if (error.message && (error.message.includes('429') || error.message.includes('404') || error.message.includes('400'))) {
            break; 
         }
 
