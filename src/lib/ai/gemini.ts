@@ -13,8 +13,13 @@ export type RecapResult = {
   }[];
 };
 
-export async function uploadFileToGemini(apiKey: string, file: File): Promise<{ uri: string, name: string }> {
+export async function uploadFileToGemini(apiKey: string, file: File): Promise<{ uri: string, name: string, mimeType: string }> {
   const metadata = { file: { displayName: file.name } };
+  
+  let mimeType = file.type;
+  if (mimeType.startsWith('video/')) {
+      mimeType = 'audio/mp4';
+  }
   
   const initRes = await fetch("https://generativelanguage.googleapis.com/upload/v1beta/files?key=" + apiKey, {
     method: 'POST',
@@ -22,7 +27,7 @@ export async function uploadFileToGemini(apiKey: string, file: File): Promise<{ 
       'X-Goog-Upload-Protocol': 'resumable',
       'X-Goog-Upload-Command': 'start',
       'X-Goog-Upload-Header-Content-Length': file.size.toString(),
-      'X-Goog-Upload-Header-Content-Type': file.type,
+      'X-Goog-Upload-Header-Content-Type': mimeType,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(metadata)
@@ -45,7 +50,7 @@ export async function uploadFileToGemini(apiKey: string, file: File): Promise<{ 
   if (!uploadRes.ok) throw new Error("Upload failed: " + await uploadRes.text());
 
   const fileInfo = await uploadRes.json();
-  return { uri: fileInfo.file.uri, name: fileInfo.file.name };
+  return { uri: fileInfo.file.uri, name: fileInfo.file.name, mimeType };
 }
 
 export async function waitForFileProcessing(apiKey: string, fileName: string) {
@@ -144,8 +149,18 @@ export const generateTranscript = async (
 
         return transcriptText;
       } catch (error: any) {
-        const errMsg = error.message || "Lỗi không xác định";
-        errorLogs.push(`[${modelName}]: ${errMsg.substring(0, 50)}...`);
+        const fullMsg = error.message || "Lỗi không xác định";
+        // Extract the HTTP status and actual message from GoogleGenerativeAI Error
+        // Example: "[GoogleGenerativeAI Error]: Error fetching from https://...: [429 ] You exceeded..."
+        let shortMsg = fullMsg;
+        const statusMatch = fullMsg.match(/\[(\d{3})\s*\](.*)/);
+        if (statusMatch) {
+            shortMsg = `[${statusMatch[1]}] ${statusMatch[2].substring(0, 100)}`;
+        } else {
+            shortMsg = fullMsg.length > 100 ? fullMsg.substring(0, 100) + "..." : fullMsg;
+        }
+
+        errorLogs.push(`[${modelName}]: ${shortMsg}`);
         console.warn(`Model ${modelName} (Attempt ${attempt}) failed for transcription:`, error.message);
         lastError = error;
         
@@ -246,18 +261,26 @@ export const generateRecap = async (
         
         return parsedData;
       } catch (error: any) {
-        const errMsg = error.message || "Lỗi không xác định";
-        errorLogs.push(`[${modelName}]: ${errMsg.substring(0, 50)}...`);
+        const fullMsg = error.message || "Lỗi không xác định";
+        let shortMsg = fullMsg;
+        const statusMatch = fullMsg.match(/\[(\d{3})\s*\](.*)/);
+        if (statusMatch) {
+            shortMsg = `[${statusMatch[1]}] ${statusMatch[2].substring(0, 100)}`;
+        } else {
+            shortMsg = fullMsg.length > 100 ? fullMsg.substring(0, 100) + "..." : fullMsg;
+        }
+
+        errorLogs.push(`[${modelName}]: ${shortMsg}`);
         console.warn(`Model ${modelName} (Attempt ${attempt}) failed for recap:`, error.message);
         lastError = error;
         
-        const isSyntaxError = error instanceof SyntaxError || errMsg.includes("Unexpected token");
+        const isSyntaxError = error instanceof SyntaxError || fullMsg.includes("Unexpected token");
         
-        if (errMsg.includes('429') || errMsg.includes('404') || errMsg.includes('400')) {
+        if (fullMsg.includes('429') || fullMsg.includes('404') || fullMsg.includes('400')) {
            break; 
         }
 
-        if (errMsg.includes('503') || isSyntaxError) {
+        if (fullMsg.includes('503') || isSyntaxError) {
           if (attempt < 2) {
             await new Promise(r => setTimeout(r, 5000));
             continue;

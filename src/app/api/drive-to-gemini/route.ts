@@ -53,7 +53,6 @@ async function runBackgroundUpload(fileId: string, apiKey: string) {
       headers: {
         'X-Goog-Upload-Protocol': 'resumable',
         'X-Goog-Upload-Command': 'start',
-        ...(contentLength ? { 'X-Goog-Upload-Header-Content-Length': contentLength } : {}),
         'X-Goog-Upload-Header-Content-Type': mimeType,
         'Content-Type': 'application/json',
       },

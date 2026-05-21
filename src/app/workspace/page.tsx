@@ -129,14 +129,14 @@ export default function WorkspacePage() {
       } else if (selectedFile) {
         setLoadingStatus("Đang tải file lên Gemini (Tùy thuộc mạng của bạn)...");
         setProgress(15);
-        const { uri, name } = await uploadFileToGemini(testKey, selectedFile);
+        const { uri, name, mimeType } = await uploadFileToGemini(testKey, selectedFile);
         
-        setLoadingStatus("Đang chờ Gemini xử lý âm thanh/video (Có thể mất 1-3 phút)...");
+        setLoadingStatus("Đang chờ Gemini xử lý (Có thể mất 1-3 phút)...");
         setProgress(40);
         await waitForFileProcessing(testKey, name);
         
         fileUri = uri;
-        fileMimeType = selectedFile.type;
+        fileMimeType = mimeType;
       }
       
       setLoadingStatus("Đang nhờ Gemini bóc băng âm thanh (Transcribing)...");
