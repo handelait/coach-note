@@ -165,11 +165,11 @@ export const generateTranscript = async (
         lastError = error;
         
         // If it's a 429 (Quota), 404 (Not Found), or 400 (Bad Request/Token Limit), DO NOT retry this model, break the attempt loop and move to NEXT model
-        if (errMsg.includes('429') || errMsg.includes('404') || errMsg.includes('400')) {
+        if (fullMsg.includes('429') || fullMsg.includes('404') || fullMsg.includes('400')) {
            break; 
         }
 
-        if (errMsg.includes('503')) {
+        if (fullMsg.includes('503')) {
           if (attempt < 2) {
             await new Promise(r => setTimeout(r, 5000));
             continue;
