@@ -27,10 +27,31 @@ app.post('/process-drive', async (req, res) => {
 
     try {
         console.log(`[${jobId}] Đang tải video từ Google Drive...`);
-        // 1. Download video from Google Drive to disk
-        const driveRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+        let driveUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
+        let driveRes = await fetch(driveUrl);
+        
+        const contentType = driveRes.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+            const text = await driveRes.text();
+            const actionMatch = text.match(/action="([^"]+)"/);
+            if (actionMatch) {
+                let newUrl = actionMatch[1];
+                if (!newUrl.startsWith("http")) {
+                    newUrl = "https://drive.usercontent.google.com" + newUrl;
+                }
+                const inputMatches = text.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g);
+                const params = new URLSearchParams();
+                for (const match of Array.from(inputMatches)) {
+                    params.append(match[1], match[2]);
+                }
+                driveRes = await fetch(newUrl + "?" + params.toString());
+            } else {
+                throw new Error("Không thể vượt qua xác thực Drive. Hãy đảm bảo link đã cấp quyền 'Bất kỳ ai có liên kết đều xem được'.");
+            }
+        }
+
         if (!driveRes.ok) {
-            throw new Error(`Google Drive API lỗi: ${driveRes.statusText}`);
+            throw new Error(`Google Drive lỗi: ${await driveRes.text()}`);
         }
         
         // Cần tải file hoàn chỉnh về ổ cứng để tránh lỗi moov atom ở cuối stream MP4
