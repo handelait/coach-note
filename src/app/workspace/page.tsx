@@ -105,19 +105,40 @@ export default function WorkspacePage() {
         setLoadingStatus("Đang kéo file từ Drive đẩy lên Gemini (Tốc độ phụ thuộc băng thông, vui lòng không tắt trang)...");
         setProgress(15);
 
-        const startRes = await fetch('/api/drive-to-gemini', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'start', fileId, apiKey: testKey })
-        });
-        
-        if (!startRes.ok) {
-          const errData = await startRes.json();
-          throw new Error(errData.error || "Lỗi khi kết nối Google Drive.");
-        }
+        let attempt = 0;
+        let jobData;
 
-        const jobData = await startRes.json();
-        if (jobData.status === 'error') throw new Error(jobData.error || "Có lỗi xảy ra khi xử lý file");
+        while (attempt < 2) {
+            attempt++;
+            if (attempt === 2) {
+                setLoadingStatus("Máy chủ phụ đang khởi động (Cold Start). Đang tự động kết nối lại...");
+            }
+
+            const startRes = await fetch('/api/drive-to-gemini', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'start', fileId, apiKey: testKey })
+            });
+            
+            if (!startRes.ok) {
+               if (startRes.status === 504 && attempt === 1) {
+                   // Render is waking up, wait 3 seconds and retry
+                   await new Promise(r => setTimeout(r, 3000));
+                   continue;
+               }
+               
+               let errText = await startRes.text();
+               try {
+                  const errJson = JSON.parse(errText);
+                  errText = errJson.error || errJson.message || errText;
+               } catch {}
+               throw new Error(errText || "Lỗi khi kết nối hệ thống bóc tách.");
+            }
+
+            jobData = await startRes.json();
+            if (jobData.status === 'error') throw new Error(jobData.error || "Có lỗi xảy ra khi xử lý file");
+            break;
+        }
         
         setLoadingStatus("Đang chờ Gemini xử lý âm thanh/video (Có thể mất 1-5 phút)...");
         setProgress(40);
