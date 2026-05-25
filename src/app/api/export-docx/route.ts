@@ -28,12 +28,17 @@ export async function POST(req: Request) {
       </html>
     `;
 
+    const safeTitle = (title || 'CoachNote Recap').replace(/[<>&'"]/g, '');
+
     const fileBuffer = await HTMLtoDOCX(wrappedHtml, null, {
-      title: title || 'CoachNote Recap',
+      title: safeTitle,
       margins: { top: 1440, right: 1440, bottom: 1440, left: 1440 }, // 1 inch margins
     });
 
-    return new NextResponse(fileBuffer, {
+    // Convert Node Buffer to Uint8Array for Next.js 14 compatibility
+    const uint8Array = new Uint8Array(fileBuffer);
+
+    return new NextResponse(uint8Array, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
