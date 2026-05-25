@@ -13,14 +13,34 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.post('/process-drive', async (req, res) => {
+// In-memory job store
+const jobs = new Map();
+
+app.post('/process-drive-start', async (req, res) => {
     const { fileId, apiKey } = req.body;
-    
-    if (!fileId || !apiKey) {
-        return res.status(400).json({ error: "Thiếu fileId hoặc apiKey" });
-    }
+    if (!fileId || !apiKey) return res.status(400).json({ error: "Thiếu fileId hoặc apiKey" });
 
     const jobId = Math.random().toString(36).substring(7);
+    jobs.set(jobId, { status: 'processing' });
+
+    // Respond immediately to prevent Vercel 60s timeout
+    res.json({ jobId });
+
+    // Continue heavy processing in background
+    runBackgroundJob(jobId, fileId, apiKey).catch(err => {
+        console.error(`[${jobId}] Lỗi Background:`, err);
+        jobs.set(jobId, { status: 'error', error: err.message });
+    });
+});
+
+app.get('/process-drive-status/:jobId', (req, res) => {
+    const { jobId } = req.params;
+    const job = jobs.get(jobId);
+    if (!job) return res.status(404).json({ error: "Không tìm thấy tiến trình" });
+    res.json(job);
+});
+
+async function runBackgroundJob(jobId, fileId, apiKey) {
     const tmpDir = os.tmpdir();
     const videoPath = path.join(tmpDir, `${jobId}.mp4`);
     const audioPath = path.join(tmpDir, `${jobId}.m4a`);
@@ -54,16 +74,13 @@ app.post('/process-drive', async (req, res) => {
             throw new Error(`Google Drive lỗi: ${await driveRes.text()}`);
         }
         
-        // Cần tải file hoàn chỉnh về ổ cứng để tránh lỗi moov atom ở cuối stream MP4
         await pipeline(Readable.fromWeb(driveRes.body), fs.createWriteStream(videoPath));
-        
-        console.log(`[${jobId}] Tải video hoàn tất. Đang cắt âm thanh bằng FFmpeg...`);
+        console.log(`[${jobId}] Tải video hoàn tất. Đang cắt âm thanh...`);
 
-        // 2. Extract audio using FFmpeg
         await new Promise((resolve, reject) => {
             ffmpeg(videoPath)
-                .outputOptions('-vn') // Bỏ video
-                .outputOptions('-acodec copy') // Copy thẳng âm thanh, cực nhanh không cần re-encode
+                .outputOptions('-vn')
+                .outputOptions('-acodec copy')
                 .save(audioPath)
                 .on('end', resolve)
                 .on('error', reject);
@@ -71,7 +88,6 @@ app.post('/process-drive', async (req, res) => {
 
         console.log(`[${jobId}] Cắt âm thanh hoàn tất. Đang gửi lên Gemini...`);
 
-        // 3. Upload extracted audio to Gemini API
         const stats = fs.statSync(audioPath);
         const audioContentLength = stats.size.toString();
         const mimeType = "audio/mp4";
@@ -93,7 +109,6 @@ app.post('/process-drive', async (req, res) => {
         const uploadUrl = initRes.headers.get('x-goog-upload-url');
         if (!uploadUrl) throw new Error("Không nhận được upload URL từ Gemini");
 
-        // Read audio as stream, convert to web stream for fetch
         const audioStream = fs.createReadStream(audioPath);
 
         const uploadRes = await fetch(uploadUrl, {
@@ -109,27 +124,24 @@ app.post('/process-drive', async (req, res) => {
         if (!uploadRes.ok) throw new Error("Upload to Gemini failed: " + await uploadRes.text());
 
         const fileInfo = await uploadRes.json();
-        
         console.log(`[${jobId}] Hoàn tất toàn bộ quy trình thành công!`);
 
-        // 4. Return success to Vercel
-        return res.json({
-            uri: fileInfo.file.uri,
-            name: fileInfo.file.name,
-            mimeType: mimeType
+        jobs.set(jobId, {
+            status: 'completed',
+            data: { uri: fileInfo.file.uri, name: fileInfo.file.name, mimeType: mimeType }
         });
 
     } catch (error) {
         console.error(`[${jobId}] Lỗi:`, error);
-        return res.status(500).json({ error: error.message });
+        jobs.set(jobId, { status: 'error', error: error.message });
     } finally {
-        // 5. Clean up temporary files to free up disk space
         if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
         if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
     }
-});
+}
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`Worker đang chạy tại cổng ${PORT}`);
 });
+

@@ -1,44 +1,44 @@
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Allow enough time for Render worker to respond
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const { action, fileId, apiKey } = await req.json();
-
-    if (action !== 'start' || !fileId || !apiKey) {
-      return NextResponse.json({ error: "Thiếu thông tin bắt buộc" }, { status: 400 });
-    }
+    const body = await req.json();
+    const { action } = body;
 
     const workerUrl = process.env.RENDER_WORKER_URL;
     if (!workerUrl) {
       return NextResponse.json({ 
-        error: "Chưa cấu hình RENDER_WORKER_URL trên Vercel. Vui lòng thêm biến môi trường RENDER_WORKER_URL trỏ tới ứng dụng Render của bạn." 
+        error: "Chưa cấu hình RENDER_WORKER_URL trên Vercel." 
       }, { status: 500 });
     }
 
-    console.log(`[Vercel] Đang gửi yêu cầu bóc tách âm thanh sang Render Worker: ${workerUrl}`);
-
-    // Call Render Worker to do the heavy lifting
-    const workerRes = await fetch(`${workerUrl}/process-drive`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileId, apiKey })
-    });
-
-    if (!workerRes.ok) {
-      const errorText = await workerRes.text();
-      throw new Error(`Render Worker báo lỗi: ${errorText}`);
+    if (action === 'start') {
+      const { fileId, apiKey } = body;
+      const workerRes = await fetch(`${workerUrl}/process-drive-start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId, apiKey })
+      });
+      if (!workerRes.ok) throw new Error(await workerRes.text());
+      const jobData = await workerRes.json();
+      return NextResponse.json(jobData);
+    } 
+    
+    if (action === 'status') {
+      const { jobId } = body;
+      const workerRes = await fetch(`${workerUrl}/process-drive-status/${jobId}`);
+      if (!workerRes.ok) throw new Error(await workerRes.text());
+      const statusData = await workerRes.json();
+      return NextResponse.json(statusData);
     }
 
-    const jobData = await workerRes.json();
-    
-    // Render worker returns { uri, name, mimeType }
-    return NextResponse.json({ status: 'completed', ...jobData });
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
 
   } catch (error: any) {
     console.error("Vercel Proxy Error:", error);
-    return NextResponse.json({ error: error.message || "Đã xảy ra lỗi tại Vercel Proxy" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Lỗi Proxy" }, { status: 500 });
   }
 }

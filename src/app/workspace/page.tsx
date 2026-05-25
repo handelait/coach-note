@@ -107,6 +107,7 @@ export default function WorkspacePage() {
 
         let attempt = 0;
         let jobData;
+        let jobId = "";
 
         while (attempt < 2) {
             attempt++;
@@ -135,17 +136,40 @@ export default function WorkspacePage() {
                throw new Error(errText || "Lỗi khi kết nối hệ thống bóc tách.");
             }
 
-            jobData = await startRes.json();
-            if (jobData.status === 'error') throw new Error(jobData.error || "Có lỗi xảy ra khi xử lý file");
+            const startData = await startRes.json();
+            jobId = startData.jobId;
             break;
         }
+
+        if (!jobId) throw new Error("Máy chủ Thợ Phụ không phản hồi. Vui lòng thử lại sau.");
         
-        setLoadingStatus("Đang chờ Gemini xử lý âm thanh/video (Có thể mất 1-5 phút)...");
-        setProgress(40);
-        await waitForFileProcessing(testKey, jobData.name);
+        setLoadingStatus("Render đang tải file và tách âm thanh (Vui lòng đợi 1-3 phút, không tắt trang)...");
         
-        fileUri = jobData.uri;
-        fileMimeType = jobData.mimeType;
+        // Polling loop
+        while (true) {
+            await new Promise(r => setTimeout(r, 5000));
+            
+            const statusRes = await fetch('/api/drive-to-gemini', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'status', jobId })
+            });
+
+            if (!statusRes.ok) continue; // ignore transient fetch errors
+
+            const jobStatusData = await statusRes.json();
+            if (jobStatusData.status === 'error') throw new Error(jobStatusData.error || "Có lỗi xảy ra trong quá trình xử lý");
+            
+            if (jobStatusData.status === 'completed') {
+                fileUri = jobStatusData.data.uri;
+                fileMimeType = jobStatusData.data.mimeType;
+                
+                setLoadingStatus("Đang chờ hệ thống Gemini đồng bộ âm thanh...");
+                setProgress(40);
+                await waitForFileProcessing(testKey, jobStatusData.data.name);
+                break;
+            }
+        }
 
       } else if (selectedFile) {
         setLoadingStatus("Đang tải file lên Gemini (Tùy thuộc mạng của bạn)...");
