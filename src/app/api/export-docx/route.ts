@@ -6,26 +6,13 @@ export async function POST(req: Request) {
   try {
     const { html, title } = await req.json();
     
-    // Add basic styling wrapper to the HTML so Word renders it nicely
+    // Add basic inline styles to the HTML so Word renders it nicely
+    // Note: html-to-docx does not support full HTML documents with <head> and <style>
     const wrappedHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <style>
-            body { font-family: 'Inter', sans-serif; font-size: 11pt; color: #333333; line-height: 1.5; }
-            h1 { font-size: 16pt; font-weight: bold; color: #004D40; margin-bottom: 24pt; }
-            h2 { font-size: 14pt; font-weight: bold; color: #333333; margin-top: 18pt; margin-bottom: 8pt; }
-            h3 { font-size: 13pt; font-weight: bold; color: #333333; margin-top: 14pt; margin-bottom: 6pt; }
-            p { margin-bottom: 8pt; }
-            ul { margin-bottom: 8pt; }
-            li { margin-bottom: 4pt; }
-          </style>
-        </head>
-        <body>
-          <h1>${title}</h1>
-          ${html}
-        </body>
-      </html>
+      <div style="font-family: 'Inter', sans-serif; font-size: 11pt; color: #333333; line-height: 1.5;">
+        <h1 style="font-size: 16pt; font-weight: bold; color: #004D40; margin-bottom: 24pt;">${title}</h1>
+        ${html}
+      </div>
     `;
 
     const safeTitle = (title || 'CoachNote Recap').replace(/[<>&'"]/g, '');
