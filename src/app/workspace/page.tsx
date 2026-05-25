@@ -317,17 +317,40 @@ export default function WorkspacePage() {
     }
   };
 
-  const handleExportTranscript = () => {
+  const handleExportTranscript = async () => {
     if (!fullTranscript) return;
-    const blob = new Blob([fullTranscript], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "CoachNote_Transcript.txt";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    setIsExporting(true);
+    try {
+      const htmlContent = fullTranscript
+        .split('\\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => `<p>${line}</p>`)
+        .join('');
+
+      const response = await fetch('/api/export-docx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: htmlContent, title: "Transcript Bóc Băng" }),
+      });
+
+      if (!response.ok) throw new Error("Export failed");
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "CoachNote_Transcript.docx";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Export transcript error:", err);
+      alert("Lỗi khi xuất file transcript .docx. Vui lòng thử lại.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
