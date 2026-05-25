@@ -228,7 +228,7 @@ export const generateRecap = async (
                   items: {
                     type: SchemaType.OBJECT,
                     properties: {
-                      text: { type: SchemaType.STRING },
+                      text: { type: SchemaType.STRING, description: "Nội dung phân tích chi tiết (định dạng Markdown). YÊU CẦU BẮT BUỘC: Viết cực kỳ DÀI và CẶN KẼ. Mỗi đoạn phải phân tích sâu sắc từ 4-6 câu trở lên. TUYỆT ĐỐI KHÔNG TÓM TẮT NGẮN GỌN." },
                       isInsight: { type: SchemaType.BOOLEAN }
                     },
                     required: ["text", "isInsight"]
