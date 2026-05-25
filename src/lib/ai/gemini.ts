@@ -118,7 +118,7 @@ export const generateTranscript = async (
         mimeType: fileMimeType,
       }
     },
-    { text: "Bạn là một trợ lý ảo chuyên nghiệp. Nhiệm vụ duy nhất của bạn là cung cấp bản bóc băng (transcript) nguyên văn, chính xác từng từ một của file âm thanh/video đính kèm này bằng Tiếng Việt. Không tóm tắt, không giải thích, không bỏ sót thông tin. Chỉ xuất ra toàn bộ nội dung lời nói của cuộc hội thoại." }
+    { text: "Bạn là một trợ lý ảo chuyên nghiệp. Nhiệm vụ duy nhất của bạn là cung cấp bản bóc băng (transcript) nguyên văn, chính xác từng từ một của file âm thanh/video đính kèm này bằng Tiếng Việt. Quan trọng: Hãy phân chia rõ ràng người nói dưới dạng 'Người nói A: ...' và 'Người nói B: ...'. Không tóm tắt, không giải thích, không bỏ sót thông tin. Chỉ xuất ra toàn bộ nội dung lời nói của cuộc hội thoại." }
   ];
 
   const availableModels = await getBestModelNames(apiKey);
@@ -239,8 +239,8 @@ export const generateRecap = async (
                   items: {
                     type: SchemaType.OBJECT,
                     properties: {
-                      id: { type: SchemaType.NUMBER },
-                      context: { type: SchemaType.STRING }
+                      id: { type: SchemaType.NUMBER, description: "ID của trích dẫn (1, 2, 3...)" },
+                      context: { type: SchemaType.STRING, description: "Đoạn trích dẫn dài, chi tiết lấy chính xác 100% từ transcript. Yêu cầu bốc đoạn hội thoại DÀI gấp 3-4 lần bình thường, có thể gộp nhiều câu nói ở các đoạn khác nhau nhưng liên quan mật thiết để người đọc hiểu rõ toàn bộ bối cảnh xung quanh ý đó. Bắt buộc phải là câu nói thật trong file." }
                     },
                     required: ["id", "context"]
                   }

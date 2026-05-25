@@ -27,6 +27,7 @@ export default function WorkspacePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState<string>("");
+  const [fullTranscript, setFullTranscript] = useState<string>("");
   const [apiKey, setApiKey] = useState("");
   const [driveLink, setDriveLink] = useState("");
   
@@ -36,7 +37,7 @@ export default function WorkspacePage() {
   }, []);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [result, setResult] = useState<RecapResult | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [activeCitationId, setActiveCitationId] = useState<number | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   
@@ -84,10 +85,11 @@ export default function WorkspacePage() {
       }
     }
 
-    setError("");
+    setError(null);
     setIsProcessing(true);
-    setProgress(5);
     setResult(null);
+    setFullTranscript("");
+    setProgress(5);
     setActiveCitationId(null);
     setIsCopied(false);
 
@@ -123,7 +125,6 @@ export default function WorkspacePage() {
             
             if (!startRes.ok) {
                if (startRes.status === 504 && attempt === 1) {
-                   // Render is waking up, wait 3 seconds and retry
                    await new Promise(r => setTimeout(r, 3000));
                    continue;
                }
@@ -145,7 +146,6 @@ export default function WorkspacePage() {
         
         setLoadingStatus("Đang xử lý dữ liệu (Vui lòng đợi 1-3 phút, không tắt trang)...");
         
-        // Polling loop
         while (true) {
             await new Promise(r => setTimeout(r, 5000));
             
@@ -155,7 +155,7 @@ export default function WorkspacePage() {
                 body: JSON.stringify({ action: 'status', jobId })
             });
 
-            if (!statusRes.ok) continue; // ignore transient fetch errors
+            if (!statusRes.ok) continue;
 
             const jobStatusData = await statusRes.json();
             if (jobStatusData.status === 'error') throw new Error(jobStatusData.error || "Có lỗi xảy ra trong quá trình xử lý");
@@ -190,6 +190,7 @@ export default function WorkspacePage() {
       let finalTranscript = "";
       try {
         finalTranscript = await generateTranscript(testKey, fileUri, fileMimeType!);
+        setFullTranscript(finalTranscript);
       } catch (err: any) {
         throw new Error("Lỗi khi bóc băng: " + err.message);
       }
@@ -197,7 +198,6 @@ export default function WorkspacePage() {
       setLoadingStatus("Đang xuất recap phân tích...");
       setProgress(60);
 
-      // Phase 2: Generate Content
       const progressInterval = setInterval(() => {
         setProgress((prev) => (prev < 90 ? prev + 5 : prev));
       }, 1000);
@@ -317,9 +317,21 @@ export default function WorkspacePage() {
     }
   };
 
+  const handleExportTranscript = () => {
+    if (!fullTranscript) return;
+    const blob = new Blob([fullTranscript], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "CoachNote_Transcript.txt";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
-      {/* Sidebar */}
       <aside className="w-[340px] bg-white border-r border-gray-200 flex flex-col h-full z-10 shadow-sm relative shrink-0">
         <div className="p-6 pb-2 border-b border-gray-100 flex justify-between items-center">
           <h1 className="text-xl font-bold text-primary flex items-center gap-2">
@@ -334,7 +346,6 @@ export default function WorkspacePage() {
           <div className="flex flex-col gap-4">
             <h2 className="text-sm font-semibold text-primary">Nguồn Dữ Liệu</h2>
             
-            {/* Drive Link Input */}
             <div>
               <label className="block text-xs font-bold text-accent-hover mb-1.5">1. Dán Link Google Drive (Bất kỳ ai cũng có thể xem)</label>
               <input 
@@ -342,7 +353,7 @@ export default function WorkspacePage() {
                 value={driveLink}
                 onChange={(e) => {
                   setDriveLink(e.target.value);
-                  setSelectedFile(null); // Clear file if link is pasted
+                  setSelectedFile(null);
                 }}
                 placeholder="https://drive.google.com/file/d/..." 
                 className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-primary focus:outline-none transition-colors shadow-sm"
@@ -355,7 +366,6 @@ export default function WorkspacePage() {
               <div className="h-px bg-gray-200 flex-1"></div>
             </div>
 
-            {/* File Upload Section */}
             <div>
               <label className="block text-xs font-bold text-accent-hover mb-1.5">2. Tải lên từ máy tính</label>
               <label className="flex flex-col items-center justify-center w-full h-24 bg-surface border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors relative overflow-hidden">
@@ -384,8 +394,8 @@ export default function WorkspacePage() {
                         return;
                       }
                       setSelectedFile(file);
-                      setDriveLink(""); // Clear link if file is selected
-                      setError("");
+                      setDriveLink("");
+                      setError(null);
                     }
                   }} 
                 />
@@ -451,40 +461,52 @@ export default function WorkspacePage() {
             </div>
           )}
           <button 
-            className={"w-full py-3.5 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors " + (isProcessing ? 'bg-surface text-gray-400 cursor-not-allowed' : 'bg-accent hover:bg-accent-hover text-primary')}
+            className={"w-full py-3.5 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors " + (isProcessing ? 'bg-surface text-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-primary/90 text-white')}
             onClick={handleGenerate}
-            disabled={isProcessing}
+            disabled={isProcessing || (!driveLink && !selectedFile)}
           >
-            <span className="text-xl leading-none">✨</span> Generate Recap
+            {isProcessing ? "Đang xử lý..." : "Bắt đầu bóc băng"}
           </button>
+          <p className="text-xs text-gray-400 text-center mt-3 flex items-center justify-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            Tệp tin được xử lý ẩn danh và xóa vĩnh viễn sau khi hoàn tất.
+          </p>
         </div>
       </aside>
 
-      {/* Main Content (Editor) */}
       <main className="flex-1 flex flex-col items-center py-8 overflow-y-auto px-4 relative" onClick={handleEditorClick}>
         <div className="w-full max-w-[900px] flex flex-col gap-4">
           
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-2 flex items-center gap-1">
-            <button className="p-2 hover:bg-surface rounded-md text-gray-600 transition-colors"><Undo className="w-4 h-4" /></button>
-            <button className="p-2 hover:bg-surface rounded-md text-gray-600 transition-colors"><Redo className="w-4 h-4" /></button>
-            <div className="w-px h-6 bg-gray-200 mx-2" />
-            <div className="flex items-center gap-1 hover:bg-surface px-3 py-1.5 rounded-md cursor-pointer text-sm text-gray-600 transition-colors">
-              <span>Normal Text</span>
-              <ChevronDown className="w-3 h-3" />
+          {result && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-2 flex items-center gap-2 justify-center">
+              <button 
+                onClick={handleExportTranscript}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-surface rounded-md transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Tải Transcript
+              </button>
+              <button 
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-surface rounded-md transition-colors"
+              >
+                {isCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                {isCopied ? "Đã chép" : "Chép Recap"}
+              </button>
+              <button 
+                onClick={handleExportDocx}
+                disabled={isExporting}
+                className={"flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors " + (isExporting ? 'text-gray-400 cursor-wait bg-gray-50' : 'text-gray-600 hover:bg-surface')}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                {isExporting ? "Đang xuất..." : "Tải DOCX"}
+              </button>
             </div>
-            <div className="w-px h-6 bg-gray-200 mx-2" />
-            <button className="p-2 hover:bg-surface rounded-md text-gray-800 font-bold transition-colors"><Bold className="w-4 h-4" /></button>
-            <button className="p-2 hover:bg-surface rounded-md text-gray-800 transition-colors"><Italic className="w-4 h-4" /></button>
-            <button className="p-2 hover:bg-surface rounded-md text-gray-800 transition-colors"><Underline className="w-4 h-4" /></button>
-            <div className="w-px h-6 bg-gray-200 mx-2" />
-            <button className="p-2 hover:bg-surface rounded-md text-gray-600 transition-colors"><List className="w-4 h-4" /></button>
-            <button className="p-2 hover:bg-surface rounded-md text-gray-600 transition-colors"><ListOrdered className="w-4 h-4" /></button>
-            <button className="p-2 hover:bg-surface rounded-md text-gray-600 transition-colors"><LinkIcon className="w-4 h-4" /></button>
-          </div>
+          )}
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 min-h-[700px] relative pb-32">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 min-h-[700px] relative">
             {!result && !isProcessing && (
-              <div className="flex items-center justify-center h-full text-gray-400 italic">
+              <div className="flex items-center justify-center h-[500px] text-gray-400 italic">
                 Your generated recap will appear here...
               </div>
             )}
@@ -500,10 +522,14 @@ export default function WorkspacePage() {
                 </h1>
                 
                 <div className="space-y-6 text-[16px] leading-[1.6] text-[#333333]">
-                  {result.paragraphs.map((p, index) => (
-                    <div className="relative group/block" key={index}>
+                  {result.paragraphs.map((p, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`animate-in fade-in slide-in-from-bottom-2 duration-700 fill-mode-both`}
+                      style={{ animationDelay: `${idx * 200}ms` }}
+                    >
                       <div 
-                        className="prose prose-base max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 prose-headings:!font-bold prose-headings:!text-[#333333] prose-h1:!text-[21px] prose-h2:!text-[21px] prose-h3:!text-[21px] outline-none focus:bg-gray-50 transition-colors rounded p-1"
+                        className="prose prose-base max-w-none prose-p:my-1 outline-none"
                         contentEditable="true"
                         suppressContentEditableWarning
                         dangerouslySetInnerHTML={renderHTML(p.text as string)} 
@@ -513,30 +539,9 @@ export default function WorkspacePage() {
                 </div>
               </div>
             )}
-            
-            {result && (
-              <div className="absolute bottom-10 right-12 flex gap-3 mt-10">
-                <button 
-                  onClick={handleCopy}
-                  className={"px-5 py-2.5 rounded-full border border-gray-200 bg-white text-sm font-semibold hover:bg-surface flex items-center gap-2 shadow-sm transition-colors " + (isCopied ? 'text-green-600' : 'text-gray-700')}
-                >
-                  {isCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  {isCopied ? "Copied!" : "Copy"}
-                </button>
-                <button 
-                  onClick={handleExportDocx}
-                  disabled={isExporting}
-                  className={"px-5 py-2.5 rounded-full border border-gray-200 text-sm font-semibold hover:bg-surface flex items-center gap-2 shadow-sm transition-colors " + (isExporting ? 'bg-gray-50 text-gray-400 cursor-wait' : 'bg-white text-gray-700')}
-                >
-                  <FileText className="w-4 h-4" /> 
-                  {isExporting ? "Exporting..." : "Export .docx"}
-                </button>
-              </div>
-            )}
           </div>
         </div>
         
-        {/* Floating Citation Popup */}
         {activeCitationId !== null && result && (
           <div className="fixed bottom-10 right-10 w-[450px] bg-[#2A2A2A] text-white p-6 rounded-2xl shadow-2xl z-[100] animate-in slide-in-from-bottom-8 duration-300 border border-gray-700">
             <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
@@ -560,7 +565,6 @@ export default function WorkspacePage() {
           </div>
         )}
       </main>
-
     </div>
   );
 }
