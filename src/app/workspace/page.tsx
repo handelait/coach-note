@@ -102,7 +102,7 @@ export default function WorkspacePage() {
         if (!match) throw new Error("Link Google Drive không hợp lệ. Hãy copy đúng link chia sẻ từ Google Drive.");
         const fileId = match[1];
 
-        setLoadingStatus("Đang kéo file từ Drive đẩy lên Gemini (Tốc độ phụ thuộc băng thông, vui lòng không tắt trang)...");
+        setLoadingStatus("Đang tải dữ liệu (Vui lòng không tắt trang)...");
         setProgress(15);
 
         let attempt = 0;
@@ -112,7 +112,7 @@ export default function WorkspacePage() {
         while (attempt < 2) {
             attempt++;
             if (attempt === 2) {
-                setLoadingStatus("Máy chủ phụ đang khởi động (Cold Start). Đang tự động kết nối lại...");
+                setLoadingStatus("Hệ thống đang khởi động. Đang tự động kết nối lại...");
             }
 
             const startRes = await fetch('/api/drive-to-gemini', {
@@ -143,7 +143,7 @@ export default function WorkspacePage() {
 
         if (!jobId) throw new Error("Máy chủ Thợ Phụ không phản hồi. Vui lòng thử lại sau.");
         
-        setLoadingStatus("Render đang tải file và tách âm thanh (Vui lòng đợi 1-3 phút, không tắt trang)...");
+        setLoadingStatus("Đang xử lý dữ liệu (Vui lòng đợi 1-3 phút, không tắt trang)...");
         
         // Polling loop
         while (true) {
@@ -164,7 +164,7 @@ export default function WorkspacePage() {
                 fileUri = jobStatusData.data.uri;
                 fileMimeType = jobStatusData.data.mimeType;
                 
-                setLoadingStatus("Đang chờ hệ thống Gemini đồng bộ âm thanh...");
+                setLoadingStatus("Đang đồng bộ dữ liệu âm thanh...");
                 setProgress(40);
                 await waitForFileProcessing(testKey, jobStatusData.data.name);
                 break;
@@ -172,11 +172,11 @@ export default function WorkspacePage() {
         }
 
       } else if (selectedFile) {
-        setLoadingStatus("Đang tải file lên Gemini (Tùy thuộc mạng của bạn)...");
+        setLoadingStatus("Đang tải file lên hệ thống (Tùy thuộc tốc độ mạng)...");
         setProgress(15);
         const { uri, name, mimeType } = await uploadFileToGemini(testKey, selectedFile);
         
-        setLoadingStatus("Đang chờ Gemini xử lý (Có thể mất 1-3 phút)...");
+        setLoadingStatus("Đang đồng bộ dữ liệu âm thanh (Có thể mất 1-3 phút)...");
         setProgress(40);
         await waitForFileProcessing(testKey, name);
         
@@ -184,7 +184,7 @@ export default function WorkspacePage() {
         fileMimeType = mimeType;
       }
       
-      setLoadingStatus("Đang nhờ Gemini bóc băng âm thanh (Transcribing)...");
+      setLoadingStatus("Đang bóc băng âm thanh...");
       setProgress(50);
       
       let finalTranscript = "";
@@ -194,7 +194,7 @@ export default function WorkspacePage() {
         throw new Error("Lỗi khi bóc băng: " + err.message);
       }
       
-      setLoadingStatus("Đang bắt đầu phân tích Recap từ bản bóc băng...");
+      setLoadingStatus("Đang xuất recap phân tích...");
       setProgress(60);
 
       // Phase 2: Generate Content
