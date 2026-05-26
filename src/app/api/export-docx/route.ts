@@ -22,14 +22,13 @@ export async function POST(req: Request) {
       margins: { top: 1440, right: 1440, bottom: 1440, left: 1440 }, // 1 inch margins
     });
 
-    // Convert Node Buffer to Uint8Array for Next.js 14 compatibility
-    const uint8Array = new Uint8Array(fileBuffer);
+    // Convert Node Buffer to Web Blob to ensure Next.js sends it as raw binary without corruption
+    const blob = new Blob([fileBuffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 
-    return new NextResponse(uint8Array, {
+    return new NextResponse(blob, {
       status: 200,
       headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(title || 'Recap')}.docx"`,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(safeTitle)}.docx"`,
       },
     });
   } catch (error) {
