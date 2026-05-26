@@ -65,8 +65,10 @@ async function runBackgroundJob(jobId, fileId, apiKey) {
                     params.append(match[1], match[2]);
                 }
                 driveRes = await fetch(newUrl + "?" + params.toString());
+            } else if (text.includes("hasn&#39;t given you permission to download")) {
+                throw new Error("Tệp này đang bị chặn TẢI XUỐNG. Vui lòng vào Cài đặt chia sẻ của Google Drive (icon bánh răng) và tick chọn 'Người xem và người nhận xét có thể thấy tùy chọn tải xuống'.");
             } else {
-                throw new Error("Không thể vượt qua xác thực Drive. Hãy đảm bảo link đã cấp quyền 'Bất kỳ ai có liên kết đều xem được'.");
+                throw new Error("Không thể tải tệp từ Google Drive. Hãy đảm bảo link đã cấp quyền 'Bất kỳ ai có liên kết đều xem được' (Anyone with the link can view) và tệp không bị chặn tải xuống.");
             }
         }
 
