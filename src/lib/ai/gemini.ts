@@ -118,7 +118,7 @@ export const generateTranscript = async (
         mimeType: fileMimeType,
       }
     },
-    { text: "Bạn là một trợ lý ảo chuyên nghiệp. Nhiệm vụ duy nhất của bạn là cung cấp bản bóc băng (transcript) nguyên văn, chính xác từng từ một của file âm thanh/video đính kèm này bằng Tiếng Việt. Hãy ghi chép lại toàn bộ lời nói của cuộc hội thoại một cách tự nhiên nhất. Nếu có nhiều người nói, hãy cố gắng phân biệt (ví dụ: Người A, Người B) nếu có thể. CHÚ Ý QUAN TRỌNG: Tuyệt đối KHÔNG ĐƯỢC lặp đi lặp lại một từ vô nghĩa (như 'vâng', 'em', 'à') khi có khoảng lặng. Chỉ xuất ra lời nói có ý nghĩa thực tế. Không tóm tắt, không giải thích." }
+    { text: "Bạn là một trợ lý ảo chuyên nghiệp. Nhiệm vụ duy nhất của bạn là cung cấp bản bóc băng (transcript) nguyên văn, chính xác từng từ một của file âm thanh/video đính kèm này bằng Tiếng Việt. Quan trọng: Hãy phân chia rõ ràng người nói dưới dạng 'Người nói A: ...' và 'Người nói B: ...'. Không tóm tắt, không giải thích, không bỏ sót thông tin. Chỉ xuất ra toàn bộ nội dung lời nói của cuộc hội thoại." }
   ];
 
   const availableModels = await getBestModelNames(apiKey);
