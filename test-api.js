@@ -5,7 +5,7 @@ async function testApi() {
   const htmlContent = "<p>Test paragraph</p>";
   
   try {
-    const res = await fetch('http://localhost:3000/api/export-docx', {
+    const res = await fetch('http://localhost:3001/api/export-docx', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html: htmlContent, title: "Test Doc" })
